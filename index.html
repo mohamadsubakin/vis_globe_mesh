@@ -31,16 +31,86 @@
             height: 100vh;
             cursor: pointer;
         }
+		
+		/*
+		INFO COLLAPSIBLE
+		*/
+		.collapsible {
+		  background-color: #777;
+		  color: white;
+		  cursor: pointer;
+		  padding: 18px;
+		  width: 100%;
+		  border: none;
+		  text-align: left;
+		  outline: none;
+		  font-size: 15px;
+		}
+
+		.active, .collapsible:hover {
+		  background-color: #555;
+		}
+
+		.collapsible:after {
+		  content: '\002B';
+		  color: white;
+		  font-weight: bold;
+		  float: right;
+		  margin-left: 5px;
+		}
+
+		.active:after {
+		  content: "\2212";
+		}
+
+		.content {
+		  padding: 0 18px;
+		  max-height: 0;
+		  overflow: hidden;
+		  transition: max-height 0.2s ease-out;
+		  background-color: #f1f1f1;
+		}
+		
+		.info_collapsible {
+			position : absolute;
+			z-index: 1000;
+		}
+		/*
+		END INFO COLLAPSIBLE
+		*/
     </style>
 
 </head>
 
 <body>
+	<div class='info_collapsible'>
+		<button class="collapsible">INFO</button>
+		<div class="content">
+			<p>
+				Description : The mesh showing real time tweet density around the world.
+			</p>
+			<p>
+				Control : Use mouse to zoom and pan the globe.
+			</p>
+			<p>
+				
+				Data : 
+				<a href="https://www.pubnub.com/developers/realtime-data-streams/twitter-stream/" target="_blank">
+					https://www.pubnub.com/developers/realtime-data-streams/twitter-stream/
+				</a>
+			</p>
+			<p>
+				Github : 
+				<a href="https://github.com/mohamadsubakin/vis_globe_mesh" target="_blank">
+					https://github.com/mohamadsubakin/vis_globe_mesh
+				</a>
+			</p>
+		</div>
+	</div>
     <div id="globe"></div>
-
 	<!-- VIS ========================================= -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.min.js"></script>
-    <script src="OrbitControls.js"></script>
+    <script src="js/OrbitControls.js"></script>
     <script src="https://cdn.pubnub.com/pubnub.min.js"></script>
     <script>
         var globe_mesh = {
@@ -93,7 +163,7 @@
                 var mapTextureCanvas = document.createElement("canvas");
                 var mapTextureContext = mapTextureCanvas.getContext("2d");
                 var mapTextureImage = new Image();
-                mapTextureImage.src = "images/earthspec1k.jpg";
+                mapTextureImage.src = "image/earthspec1k.jpg";
 
                 var mapTexture = new THREE.Texture(mapTextureCanvas);
 
@@ -315,6 +385,22 @@
         };
 
         globe_mesh.init();
+		
+		//INFO COLLAPSIBLE
+		var coll = document.getElementsByClassName("collapsible");
+		var i;
+
+		for (i = 0; i < coll.length; i++) {
+		  coll[i].addEventListener("click", function() {
+			this.classList.toggle("active");
+			var content = this.nextElementSibling;
+			if (content.style.maxHeight){
+			  content.style.maxHeight = null;
+			} else {
+			  content.style.maxHeight = content.scrollHeight + "px";
+			} 
+		  });
+		}
         
     </script>
 
