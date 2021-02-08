@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<!--[if IE 8 ]><html class="no-js oldie ie8" lang="en"> <![endif]-->
+<!--[if IE 9 ]><html class="no-js oldie ie9" lang="en"> <![endif]-->
+<!--[if (gte IE 9)|!(IE)]><!--><html class="no-js" lang="en"> <!--<![endif]-->
+<head>
+
+   <!--- basic page needs
+   ================================================== -->
+   <meta charset="utf-8">
+	<title>Globe Mesh</title>
+	<meta name="description" content="">  
+	<meta name="author" content="">
+
+   <!-- mobile specific metas
+   ================================================== -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    
+    <style>
+        body {
+            background-image: radial-gradient(circle, black, grey);
+            /*background-color: #111111;*/
+            background-repeat: no-repeat;
+            background-size: cover;
+            position: relative;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #globe {
+            width: 100vw;
+            height: 100vh;
+            cursor: pointer;
+        }
+    </style>
+
+</head>
+
+<body>
+    <div id="globe"></div>
+
+	<!-- VIS ========================================= -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/84/three.min.js"></script>
+    <script src="OrbitControls.js"></script>
+    <script src="https://cdn.pubnub.com/pubnub.min.js"></script>
+    <script>
+        var globe_mesh = {
+            init : function(){
+                this.radius = 100;
+                this.mesh_max_height = 80;
+                this.mesh_max_data = 0;
+
+                this.container = document.getElementById("globe");
+
+                this.width = this.container.clientWidth,
+                this.height = this.container.clientHeight;
+            
+                this.scene = new THREE.Scene();
+                //scene.background = new THREE.Color( 0xbd236e );
+
+                this.camera = new THREE.PerspectiveCamera( 80, this.width / this.height, 0.1, 2000);
+                this.camera.position.z = 250;
+
+                this.controls = new THREE.OrbitControls( this.camera );
+
+                this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                this.renderer.setSize(this.width, this.height);
+
+                this.container.appendChild(this.renderer.domElement);
+
+                //add light
+                var directionalLight = new THREE.DirectionalLight( 0xffffff, 1);
+                directionalLight.position.set(0, 200, 0);
+                this.scene.add(directionalLight);
+
+                var light = new THREE.AmbientLight( 0xffffff);
+                this.scene.add(light);
+
+                this.World = new THREE.Group();
+                this.World.rotation.y = Math.PI;
+                this.scene.add(this.World);
+
+                //add geometry
+                var geometry = new THREE.IcosahedronGeometry(this.radius, 5);
+                var material = new THREE.MeshBasicMaterial({
+                    color: 0x333333,
+                    wireframe: true
+                });
+                
+                this.Icosahedron = new THREE.Mesh(geometry, material);
+
+                //add map
+                //create map texture
+                var mapTextureCanvas = document.createElement("canvas");
+                var mapTextureContext = mapTextureCanvas.getContext("2d");
+                var mapTextureImage = new Image();
+                mapTextureImage.src = "images/earthspec1k.jpg";
+
+                var mapTexture = new THREE.Texture(mapTextureCanvas);
+
+                mapTextureImage.onload = function(){
+                    var img_w = 1024;//avoid resize
+                    var img_h = 512;
+                    // mapTextureCanvas.width = mapTextureImage.width;
+                    // mapTextureCanvas.height = mapTextureImage.height;
+                    mapTextureCanvas.width = img_w;
+                    mapTextureCanvas.height = img_h;
+                    mapTextureContext.drawImage(mapTextureImage, 0, 0, img_w, img_h);
+                    //process the image here
+                    //get raw data
+                    var rawData = mapTextureContext.getImageData(0, 0, img_w, img_h);
+                    var pixelData = rawData.data;
+                    //make pure black n transparent
+                    for(var i = 0; i < pixelData.length; i+=4){
+                        if(pixelData[i] < 100){
+                            pixelData[i] = 0;
+                            pixelData[i+1] = 0;
+                            pixelData[i+2] = 0;
+                            pixelData[i+3] = 255;
+                        }
+                        else{
+                            pixelData[i] = 255;
+                            pixelData[i+1] = 255;
+                            pixelData[i+2] = 255;
+                            pixelData[i+3] = 0;
+                        }
+                    }
+
+                    rawData.data = pixelData;
+                    pixelData = null;
+
+                    //put back to context
+                    mapTextureContext.putImageData(rawData, 0, 0);
+                    mapTexture.needsUpdate = true;
+                }
+        
+                var map_material = new THREE.MeshPhongMaterial({
+                    map : mapTexture
+                });
+
+                var map_geometry = new THREE.IcosahedronGeometry(this.radius, 5);
+
+                this.world_map = new THREE.Mesh(map_geometry, map_material);
+                this.world_map.rotation.y = Math.PI;
+
+                this.World.add(this.world_map);
+                //this.World.add(this.Icosahedron);
+
+                var black_material = new THREE.MeshPhongMaterial({
+                    color      :  new THREE.Color("rgb(0,0,0)")
+                });
+
+                var white_material = new THREE.MeshPhongMaterial({
+                    color      :  new THREE.Color("rgb(255,255,255)")
+                });
+
+                var sphere_geo_mesh = new THREE.SphereBufferGeometry( 0.25, 10 ,10 );
+                this.sphere_geo_point = new THREE.SphereBufferGeometry( 0.5, 10 ,10 );
+                
+                //point_mesh
+                this.point_mesh = [];
+
+                for(var i = 0; i < geometry.vertices.length; i++){
+                    var p = geometry.vertices[i];
+                    var object = new THREE.Mesh( sphere_geo_mesh, white_material );
+                    object.position_surface = {
+                        x : p.x,
+                        y : p.y,
+                        z : p.z
+                    };
+                    object.position.set( 
+                        object.position_surface.x,
+                        object.position_surface.y,
+                        object.position_surface.z,
+                    );
+                    object.data= {
+                        count : 0,
+                        influencer : [],
+                        c_height : 0
+                    };
+                    this.point_mesh.push(object);
+				    this.World.add( object );
+                }
+
+                //get vertices_length
+                var vertices_length = Math.sqrt(
+                    (geometry.vertices[0].x - geometry.vertices[1].x) * (geometry.vertices[0].x - geometry.vertices[1].x) +
+                    (geometry.vertices[0].y - geometry.vertices[1].y) * (geometry.vertices[0].y - geometry.vertices[1].y) +
+                    (geometry.vertices[0].z - geometry.vertices[1].z) * (geometry.vertices[0].z - geometry.vertices[1].z)
+                );
+
+                this.vertices_length_max = vertices_length*1.5;//for safety
+
+                //set 6 closest point for mesh influencer
+                for(var i = 0; i < this.point_mesh.length; i++){
+                    var c_mesh = this.point_mesh[i];
+                    //find for next than it
+                    //up find set it both
+                    for(var j = i+1; j < this.point_mesh.length; j++){
+                        var c_next_mesh = this.point_mesh[j];
+                        var dist = Math.sqrt(
+                            (c_next_mesh.position.x - c_mesh.position.x) * (c_next_mesh.position.x - c_mesh.position.x) +
+                            (c_next_mesh.position.y - c_mesh.position.y) * (c_next_mesh.position.y - c_mesh.position.y) +
+                            (c_next_mesh.position.z - c_mesh.position.z) * (c_next_mesh.position.z - c_mesh.position.z)
+                        );
+                        if(dist < this.vertices_length_max){
+                            c_mesh.data.influencer.push(j);
+                            c_next_mesh.data.influencer.push(i);
+                            if(c_mesh.data.influencer.length >= 6){
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                //point data
+                this.point_data = [];
+                this.points_count = 500;
+                this.red_material = new THREE.MeshPhongMaterial({
+                    color      :  new THREE.Color("rgb(255,0,0)")
+                });
+
+                PUBNUB.init({
+                    subscribe_key: 'sub-c-78806dd4-42a6-11e4-aed8-02ee2ddab7fe',
+                    ssl: true
+                }).subscribe({
+                    channel: 'pubnub-twitter',
+                    message: function(msg) { 
+
+                        // process your last message here each 500ms.
+                        if (!msg || !msg.place || !msg.place.bounding_box)
+                            return;
+
+                        var southWest = msg.place.bounding_box.coordinates[0][0];
+                        var northEast = msg.place.bounding_box.coordinates[0][2];
+                        var center_lat = southWest[1] + (northEast[1]-southWest[1])/2;
+                        var center_lng = southWest[0] + (northEast[0]-southWest[0])/2;
+
+                        //add data
+                        globe_mesh.add_point(center_lat, center_lng);
+                    }
+                });
+
+                this.animate();
+            },
+            animate : function(){
+                requestAnimationFrame(globe_mesh.animate);
+
+                globe_mesh.World.rotation.y += 0.002;
+
+                var influencer_weight = 100;
+                for(var i = 0; i < globe_mesh.point_mesh.length; i++){
+                    var c_mesh = globe_mesh.point_mesh[i];
+                    var total_height = c_mesh.data.count;
+                    for(var j = 0; j < c_mesh.data.influencer.length; j++){
+                        var c_influencer_height = globe_mesh.point_mesh[c_mesh.data.influencer[j]].data.c_height;
+                        total_height += c_influencer_height*influencer_weight;
+                    }
+                    var avg_height = total_height/(c_mesh.data.influencer.length*influencer_weight + 1);
+                    c_mesh.data.c_height = avg_height;
+
+                    var normalize_height = 1 + ((c_mesh.data.c_height/globe_mesh.mesh_max_data)*globe_mesh.mesh_max_height || 0);
+
+                    c_mesh.position.set( 
+                        c_mesh.position_surface.x * normalize_height,
+                        c_mesh.position_surface.y * normalize_height,
+                        c_mesh.position_surface.z * normalize_height
+                    );
+                }
+
+                globe_mesh.renderer.render(globe_mesh.scene, globe_mesh.camera);
+                globe_mesh.controls.update();
+            },
+            three_2d_3d : function(lat, lng, radius){
+                var phi = (90 - lat) * Math.PI / 180;
+                var theta = (180 - lng) * Math.PI / 180;
+
+                return new THREE.Vector3( 
+                    -radius * Math.sin(phi) * Math.cos(theta),
+                    radius * Math.cos(phi), 
+                    -radius * Math.sin(phi) * Math.sin(theta) 
+                );
+            },
+            add_point : function(lat, lng){
+                var p_loc_3d = this.three_2d_3d(lat, lng, this.radius);
+
+                var object = new THREE.Mesh( this.sphere_geo_point, this.red_material );
+                object.position.set(p_loc_3d.x, p_loc_3d.y, p_loc_3d.z);
+
+                this.point_data.push(object);
+                this.World.add( object );
+
+                if(this.point_data.length > this.points_count){
+                    this.World.remove(this.point_data[0]);
+                    this.point_data.shift();
+                }
+
+                //find closest point_mesh
+                for(var j = 0; j < this.point_mesh.length; j++){
+                    var c_mesh = this.point_mesh[j];
+                    var dist = Math.sqrt(
+                        (object.position.x - c_mesh.position.x) * (object.position.x - c_mesh.position.x) +
+                        (object.position.y - c_mesh.position.y) * (object.position.y - c_mesh.position.y) +
+                        (object.position.z - c_mesh.position.z) * (object.position.z - c_mesh.position.z)
+                    );
+                    if(dist < (this.vertices_length_max/2)){
+                        c_mesh.data.count++;
+                        if(c_mesh.data.count > this.mesh_max_data){
+                            this.mesh_max_data = c_mesh.data.count;
+                        }
+                        break;
+                    }
+                }
+
+            }
+        };
+
+        globe_mesh.init();
+        
+    </script>
+
+</body>
+
+</html>
